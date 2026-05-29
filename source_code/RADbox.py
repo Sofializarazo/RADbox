@@ -1,4 +1,4 @@
-# Python code to interface with the RADbox model. Plots data in real time and saves it to a CSV file
+
 
 import sys
 import subprocess
@@ -26,8 +26,11 @@ try:
     # Automatically detects the arduino port
     ports = list(serial.tools.list_ports.comports())
     for devi in ports:
-        if "CP2102N" in devi.description:
+        if "CP210x" in devi.description or "Silicon Labs" in devi.description:
             arduino_port = devi.device
+            print(f"RADBox detected on the port: {arduino_port}")
+
+    
 
     baud = 115200
     serial_connection = serial.Serial(arduino_port, baud)
@@ -36,7 +39,7 @@ except:
     sys.exit()
 
 # Set up CSV; name is given with time so that multiple runs can be done consecutively. File name involves a different unicode character that looks like a colon (but isn't), to avoid windows issues
-not_colon = "\ua789"
+not_colon = "-"
 csv_file = datetime.now().strftime(f"raw-data-%Y-%m-%d-%H{not_colon}%M{not_colon}%S.csv")
 file = open(csv_file, "a")
 
