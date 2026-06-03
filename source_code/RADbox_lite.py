@@ -28,6 +28,8 @@ try:
     for devi in ports:
         if "Arduino" in devi.description:
             arduino_port = devi.device
+            print(f"RADBox detected on the port: {arduino_port}")
+
 
     baud = 115200 
     serial_connection = serial.Serial(arduino_port, baud)
@@ -36,9 +38,9 @@ except:
     sys.exit()
 
 # Set up CSV; name is given with time so that multiple runs can be done consecutively. File name involves a different unicode character that looks like a colon (but isn't), to avoid windows issues
-csv_file = datetime.now().strftime("raw-data-%Y-%m-%d-%H꞉%M꞉%S.csv")
+not_colon = "-"  # zero-width space character
+csv_file = datetime.now().strftime(f"raw-data-%Y-%m-%d-%H{not_colon}%M{not_colon}%S.csv")                         
 file = open(csv_file, "a")
-
 # Getting user input and reading that many samples
 user_input = input("How many samples would you like to take? 12 scans takes roughly 1 minute.\n")
 
@@ -60,6 +62,9 @@ raw_data = []
 x_axis_max = (number_of_samples * 5.5)
 
 print("Collecting data...")
+
+serial_connection.reset_input_buffer()   
+
 start_time = time.time() # start the timer
 
 # Plotting stuff
@@ -89,60 +94,56 @@ def update(i):
 
     global count
 
-    count +=1
-
-    while count <= (number_of_samples):
-        get_data = serial_connection.readline()
-        data_string = get_data.decode('utf-8')
-        data_string_parsed = data_string[0:][:-2]
-
-        # readings = data_string_parsed.split(",") might be useful later
-        total_time = round((time.time() - start_time), 2)
-
-        raw_data.append(data_string_parsed)
-        time_data.append(total_time)
-
-        print(f"Time: {total_time}, CO2: {data_string_parsed} \n")
-
-        float_raw_data = [float(x) for x in raw_data]
-    
-        ln.set_data(time_data, float_raw_data)
-
-        raw_data_min = min(float_raw_data)
-        raw_data_max = max(float_raw_data)
-
-        plt.ylim(raw_data_min - 100, raw_data_max + 100)
-
-        real_time_sample_counting = f"Samples left: {number_of_samples - count}"
-
-        plt.legend([data_string_parsed], title=real_time_sample_counting)
-
-        sns.despine()
-        
+    if count >= number_of_samples:
         return ln,
 
-    if count == number_of_samples+1:
-        # Combines the two lists as a tuple which can then be made into separate columns in a CSV via spreadsheet
-        all_data = zip(time_data, raw_data) 
+    if serial_connection.in_waiting > 0:
+        try:
+            get_data = serial_connection.readline()
+            data_string = get_data.decode('utf-8')
+            data_string_parsed = data_string[0:][:-2]
 
-        # Adding the data to the CSV we created earlier
+            total_time = round((time.time() - start_time), 2)
+
+            float_val = float(data_string_parsed)
+            raw_data.append(float_val)
+            time_data.append(total_time)
+
+            count += 1
+            print(f"Time: {total_time}, CO2: {float_val} \n")
+
+            ln.set_data(time_data, raw_data)
+
+            raw_data_min = min(raw_data)
+            raw_data_max = max(raw_data)
+
+            plt.ylim(raw_data_min - 100, raw_data_max + 100)
+
+            real_time_sample_counting = f"Samples left: {number_of_samples - count}"
+
+            plt.legend([str(float_val)], title=real_time_sample_counting)
+
+            sns.despine()
+        except ValueError:
+            return ln,
+        
+    if count == number_of_samples:
+        all_data = zip(time_data, raw_data) 
         with open(csv_file, 'w', encoding='UTF8', newline='') as f:
             data_headers = ["Time (s)", "CO2 (ppm)"]
-            
             writer = csv.writer(f)
             writer.writerow(data_headers)
             writer.writerows(all_data)
-
         file.close()
-
         print("Data collection is complete!")
         
+    return ln,
 
-animation = FuncAnimation(fig, update, interval=5500, blit=False, cache_frame_data=False)
+animation = FuncAnimation(fig, update, interval=1000, blit=False, cache_frame_data=False)
 plt.show()
 
 # If the user breaks out of the collection process early, this will save their currently collected results
-if count < number_of_samples:
+if count < number_of_samples and count > 0:
     all_data = zip(time_data, raw_data)
     
     with open(csv_file, 'w', encoding='UTF8', newline='') as f:
@@ -155,4 +156,3 @@ if count < number_of_samples:
     file.close()
 
     print("Data collection stopped early!")
-
